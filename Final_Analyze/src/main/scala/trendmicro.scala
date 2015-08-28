@@ -40,19 +40,34 @@ object Hamburger {
         if (fields(2)=="" ) fields(2)="XXX"
         (fields(0).toString,MD_info(fields(1).toLong ,fields(2),fields(3),fields(4)  ))
     }.cache()
-
-    val temp_cluster=sc.textFile(path+"new_k_means/k_2_16_ver"+i)
     
+    /**
+     * Load k-means cluster we just got
+     */
+    val temp_cluster=sc.textFile(path+"ALS_result/non_filter/binary/all_cluster_1600_pattern")
+    
+    /**
+     * Use pattern match method to get malware name
+     * {m1,m2... }
+     */
     val cluster_malware=temp_cluster.map{ line =>
       val pattern="\\((\\w|_|-)*,(\\d)*\\)".r
       val field=(pattern findAllIn line).toArray
       val malware_list=field.map(x =>x.split(",").apply(0).drop(1))
       malware_list
     }
+    /**
+     * Transfer RDD to Array
+     */
     val array_cluster_malware=cluster_malware.collect
+    
+    /**
+     * For each cluster, we check if there are the same industries or the same countries
+     */
     val bingo=for{
       pattern <- array_cluster_malware
-      //val a= pattern.mkString("\t")
+      
+      //Retrive original malware information
       same=malware_info.filter{x =>
         var check=false
         for(a <- pattern){
@@ -67,7 +82,6 @@ object Hamburger {
         else x._2.industry
       }.distinct.count
       
-      
       //check country
       country_num=same.map(x => x._2.country).filter( x=> x!="XXX").distinct.count
       temp_same=same.unpersist(true)
@@ -75,17 +89,24 @@ object Hamburger {
       if(industry_num==1||country_num==1)
     }yield (pattern,same,industry_num,country_num)
     
-    
+    /**
+     * Save information to files 
+     */
     for( x<-bingo){
       val filename=x._1.mkString("\t")
-      x._2.repartition(1).saveAsTextFile(path+"test/k_2000_result/"+filename+"/raw")
-      x._2.map(a => a._1 ).distinct.repartition(1).saveAsTextFile(path+"test/k_2000_result/"+filename+"/guid")
+      x._2.repartition(1).saveAsTextFile(path+"ALS_result/non_filter/binary/k_1600_result/"+filename+"/raw")
+      x._2.map(a => a._1 ).distinct.repartition(1).saveAsTextFile(path+"ALS_result/non_filter/binary/k_1600_result/"+filename+"/guid")
       
     }
 
      
     sc.stop()
   }
+  /** 
+   * check if the string "p" contains pattern "name"
+   * take=true -> we want this
+   * take=false -> we don't want this
+   **/
   def checkPattern(name:String,p:String, take:Boolean):Boolean={
     val pattern=p.r
     if(take)
@@ -93,36 +114,7 @@ object Hamburger {
     else
       pattern.findFirstIn(name).isEmpty
   }
-  def computeRmse(model: MatrixFactorizationModel, data: RDD[Rating], n: Long): (Double,Array[((Int,Int),Double,Double,Double)]) = {
-    val predictions: RDD[Rating] = model.predict(data.map(x => (x.user, x.product)))
-    val predictionsAndRatings = predictions.map(x => ((x.user, x.product), x.rating))
-      .join(data.map(x => ((x.user, x.product), x.rating)))
-      
-      val record=predictionsAndRatings.map(x => ( (x._1,x._2._2,x._2._1,( (x._2._1 - x._2._2) * (x._2._1 - x._2._2) ) )))
-      val error=predictionsAndRatings.map(x => (x._1,( (x._2._1 - x._2._2) * (x._2._1 - x._2._2) )))
-
-      val total_error=math.sqrt(error.values.reduce(_ + _) / n)
-      val top10=record.top(10)(new Ordering[((Int,Int),Double,Double,Double)]() {
-          override def compare(x:((Int, Int),Double,Double,Double), y: ((Int, Int),Double,Double,Double)): Int = 
-                  Ordering[Double].compare(x._4, y._4)
-      })
-      (total_error,top10)
-
-  }
-  def SquaredDistance(v1:Vector,v2:Vector):Double={
-    val size = v1.size
-    val values1=v1.toArray
-    val values2=v2.toArray
-    
-    var sum = 0.0 
-    var i = 0 
-    while (i < size) {
-      sum += (values1(i) - values2(i)) *(values1(i) - values2(i)) 
-      i += 1
-    }   
-    sum
-  }
-
+  
 }
 
 case class MD_info(timestamp:Long, country:String , family:String , industry:String )

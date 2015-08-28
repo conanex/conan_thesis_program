@@ -15,14 +15,9 @@ object Hamburger {
     else
       path="hdfs:///"
     
-    // Load guip file
-    val guid_data=sc.textFile(path+"guid-ip")
-    val guid_info=guid_data.map{line=>
-        var fields=line.split("\t")
-        (fields(0) , fields(2).toDouble)
-    }.setName("guid_info")
-    
-    //Load malware files
+    /**
+     * Load malware files
+     */
     val malware_data = sc.textFile(path+"malware/trendmicro1")
                         .union(sc.textFile(path+"malware/trendmicro2"))
                         .union(sc.textFile(path+"malware/trendmicro3"))
@@ -46,12 +41,16 @@ object Hamburger {
       else
         (x._1,MD_info(x._2.timestamp, x._2.country , mini(0) , x._2.industry ) )
     }
-    
+    /**
+     * save GUID and Malware index table to avoid re-calculate
+     */
     val save_guid=malware_transform.map(x => x._1 ).distinct().zipWithIndex()
     val save_virus=malware_transform.map(x => x._2.family ).distinct().zipWithIndex()
     save_guid.repartition(1).saveAsTextFile(path+"data_set_use4week/index_guid")
     save_virus.repartition(1).saveAsTextFile(path+"data_set_use4week/index_virus")
-    
+    /**
+     * Load GUID and Malware table
+     */
     val index_guid=sc.textFile(path+"data_set_use4week/index_guid").map{ x=>
       val line=x.drop(1).dropRight(1)
       var f=line.split(",")
@@ -62,7 +61,11 @@ object Hamburger {
       var f=line.split(",")
       (f(0),f(1).toLong)
     }
-
+    /**
+     * do mutiple join to produce readable formats
+     * EX: (123,555,15 )
+     * 123 is guid code name, 555 is malware code name, 15 is infection times
+     */
     val rating_info=malware_transform.map(x => (x._1 , x._2.family) )
     val rating_one=rating_info.map(x => (x,1L)).reduceByKey(_ + _).map( x => ( x._1._1,(x._1._2,x._2) ))
     val ratings=rating_one.join(index_guid).map(x => (x._2._1._1,(x._2._2,x._2._1._2,x._1))).join(index_virus).map(x => x._2).map(x => (x._1._1,x._2,x._1._2))
@@ -76,20 +79,10 @@ object Hamburger {
     rating_one.repartition(1).saveAsTextFile(path+"data_set_use4week/original_malware")
     ratings.repartition(1).saveAsTextFile(path+"data_set_use4week/ratings")
     
-    /*val rating_info=malware_transform.map(x => ( x._2.family,x._1) ).distinct
-    val rating_pc=rating_info.map(x => (x._1,1L)).reduceByKey(_ + _)
-      .repartition(1).sortBy(x=> x._2,false).saveAsTextFile(path+"data_set_ver2/virus_many_pc")*/
-
     
     sc.stop()
   }
-  def checkPattern(name:String,p:String, take:Boolean):Boolean={
-    val pattern=p.r
-    if(take)
-      pattern.findFirstIn(name).isDefined
-    else
-      pattern.findFirstIn(name).isEmpty
-  }
+  
 }
 
 case class MD_info(timestamp:Long, country:String , family:String , industry:String )

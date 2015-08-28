@@ -23,7 +23,10 @@ object Hamburger {
       path="hdfs:///user/conan/"
     else
       path="hdfs:///"
-      
+    
+    /**
+     * Load training and testing data
+     */
     val train_data = sc.textFile(path+"data_set_use4week/training_data")
     val test_data  = sc.textFile(path+"data_set_use4week/testing_data")
     val training = train_data.map{line=>
@@ -37,7 +40,9 @@ object Hamburger {
         Rating(fields(0).toInt,fields(1).toInt ,/*fields(2).toDouble*/ 1 )
     }
     
-    
+    /**
+     * Do ALS
+     */
     val numTrain=training.count()
     val numTest=testing.count()
     
@@ -57,6 +62,7 @@ object Hamburger {
        
       val result= computeRmse(model, testing, numTest)
       val validationRmse=result._1
+      //Prediction error top10
       val top10=result._2
       
       println("Rank= "+rank+"\tLambda= "+lambda+"\tIter= "+numIter+"\tRMSE(test)= "+validationRmse)
@@ -71,7 +77,9 @@ object Hamburger {
 
 
     }
-
+    /**
+     * Save GUID and malware features
+     */
     bestModel match{
       case Some(s) => {
         s.productFeatures.map(x=>(x._1,x._2.mkString("\t"))).saveAsTextFile(path+"ALS_result/non_filter/binary/malware_feature")
@@ -86,13 +94,10 @@ object Hamburger {
 
     sc.stop()
   }
-  def checkPattern(name:String,p:String, take:Boolean):Boolean={
-    val pattern=p.r
-    if(take)
-      pattern.findFirstIn(name).isDefined
-    else
-      pattern.findFirstIn(name).isEmpty
-  }
+  /**
+   * Compute total RMSE and caculate top 10 prediction error 
+   * return (RMSE,top10), top10 format is (matrix entry,original , predict  )
+   */
   def computeRmse(model: MatrixFactorizationModel, data: RDD[Rating], n: Long): (Double,Array[((Int,Int),Double,Double,Double)]) = {
     val predictions: RDD[Rating] = model.predict(data.map(x => (x.user, x.product)))
     val predictionsAndRatings = predictions.map(x => ((x.user, x.product), x.rating))
@@ -108,19 +113,6 @@ object Hamburger {
       })
       (total_error,top10)
 
-  }
-  def SquaredDistance(v1:Vector,v2:Vector):Double={
-    val size = v1.size
-    val values1=v1.toArray
-    val values2=v2.toArray
-    
-    var sum = 0.0 
-    var i = 0 
-    while (i < size) {
-      sum += (values1(i) - values2(i)) *(values1(i) - values2(i)) 
-      i += 1
-    }   
-    sum
   }
 
 }
